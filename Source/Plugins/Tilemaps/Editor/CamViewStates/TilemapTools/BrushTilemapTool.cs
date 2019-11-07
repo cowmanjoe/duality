@@ -72,11 +72,16 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 		public override void BeginAction()
 		{
 			base.BeginAction();
+
+			Tilemap tilemap = this.Environment.ActiveTilemap;
+			Point2 origin = this.Environment.ActiveOrigin;
+			Grid<bool> area = this.Environment.ActiveArea;
+
 			this.Environment.PerformEditTiles(
 				EditTilemapActionType.DrawTile, 
-				this.Environment.ActiveTilemap, 
-				this.Environment.ActiveOrigin, 
-				this.Environment.ActiveArea, 
+				tilemap,
+				origin,
+				area,
 				this.Environment.TileDrawSource,
 				new Point2(
 					this.Environment.ActiveOrigin.X - this.Environment.ActionBeginTile.X,
@@ -185,3 +190,4 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 		}
 	}
 }
+ 

@@ -58,6 +58,10 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 		private ToolStrip           toolstrip          = null;
 
 
+
+		private Grid<Tile> previousTiles = new Grid<Tile>();
+		
+		
 		public override string StateName
 		{
 			get { return TilemapsRes.CamViewState_TilemapEditor_Name; }
@@ -605,7 +609,32 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 			if (this.selectedTool == null) return;
 			DualityEditorApp.Deselect(this, new ObjectSelection(new object[] { this.selectedTool.Settings }));
 		}
-		
+
+		private void RecordPaintedTiles(Point2 drawPos, Grid<bool> drawArea)
+		{
+			Console.WriteLine("Entering RecordPaintedTiles");
+
+			for (int i = 0; i < drawArea.Width; i++)
+			{
+				if (drawPos.X + i < 0 || drawPos.X + i >= this.activeTilemap.Tiles.Width)
+					continue;
+				for (int j = 0; j < drawArea.Height; j++)
+				{
+					if (!drawArea[i, j] || drawPos.Y + j < 0 || drawPos.Y + j >= this.activeTilemap.Tiles.Height)
+						continue;
+
+					Console.WriteLine("Recording " + (drawPos.X + i) + ", " + (drawPos.Y + j));
+
+					this.previousTiles[drawPos.X + i, drawPos.Y + j] = this.activeTilemap.Tiles[drawPos.X + i, drawPos.Y + j];
+				}
+			}
+		}
+
+		private void UpdatePreviousTiles()
+		{
+			this.previousTiles = this.selectedTilemap != null ? new Grid<Tile>(this.selectedTilemap.Tiles.Width, this.selectedTilemap.Tiles.Height) : null;
+		}
+
 		protected override string UpdateStatusText()
 		{
 			// Display which Tilemap we're currently using
@@ -625,6 +654,7 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 			this.InitAvailableTools();
 			this.InitToolButtons();
 
+
 			// Register events
 			DualityEditorApp.SelectionChanged += this.DualityEditorApp_SelectionChanged;
 			DualityEditorApp.ObjectPropertyChanged += this.DualityEditorApp_ObjectPropertyChanged;
@@ -635,6 +665,7 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 			this.UpdateTilemapToolButtons();
 			this.UpdateActionToolButtons();
 			this.selectedTilemap = TilemapsEditorSelectionParser.QuerySelectedTilemap();
+			this.UpdatePreviousTiles();
 
 			// If we're already focused when entering the state, publish the currently selected tilemap tool
 			if (this.Focused)
@@ -742,6 +773,46 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 
 				// Begin a new action with the proposed action tool
 				this.BeginToolAction(proposedAction);
+			} 
+			else if (e.Button == MouseButtons.Right)
+			{
+                // TODO: cache this? Maybe figure out how to use the offset s.t. we only enable the desired tiles
+				Grid<bool> grid = new Grid<bool>(this.previousTiles.Width, this.previousTiles.Height);
+				for (int x = 0; x < this.previousTiles.Width; x++)
+				{
+					for (int y = 0; y < this.previousTiles.Height; y++)
+					{
+						grid[x, y] = true;
+					}
+				}
+
+				PatternTileDrawSource drawSource =
+					new PatternTileDrawSource(grid, this.previousTiles);
+
+
+                // TODO: Remove, this is for debugging
+				for (int i = 0; i < this.previousTiles.Width; i++)
+				{
+					for (int j = 0; j < this.previousTiles.Height; j++)
+					{
+						Tile tile = this.previousTiles[i, j];
+						if (tile.BaseIndex != 0)
+						{
+							Console.WriteLine($"Found tile {tile.BaseIndex} at ${i}, {j}");
+						}
+					}
+				}
+
+				((ITilemapToolEnvironment) this).PerformEditTiles(
+						EditTilemapActionType.DrawTile,
+						this.activeTilemap,
+						this.activeAreaOrigin,
+						this.activeArea,
+						drawSource,
+						new Point2(
+							this.activeAreaOrigin.X,
+							this.activeAreaOrigin.Y));
+
 			}
 		}
 		protected override void OnMouseUp(MouseEventArgs e)
@@ -1010,6 +1081,7 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 			if (this.selectedTilemap != newSelection)
 			{
 				this.selectedTilemap = newSelection;
+                this.UpdatePreviousTiles();
 				if (this.Mouseover)
 					this.OnMouseMove();
 				this.Invalidate();
@@ -1071,6 +1143,9 @@ namespace Duality.Editor.Plugins.Tilemaps.CamViewStates
 		{
 			Grid<Tile> drawPatch = new Grid<Tile>(brush.Width, brush.Height);
 			source.FillTarget(drawPatch, sourceOffset);
+
+
+			this.RecordPaintedTiles(pos, brush);
 
 			UndoRedoManager.Do(new EditTilemapAction(
 				tilemap, 
